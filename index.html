@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="HTML Viewer">
+<meta name="theme-color" content="#111827">
+<title>HTML Viewer</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: #111827;
+  color: #f3f4f6;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: #1f2937;
+  border-bottom: 1px solid #374151;
+  flex-shrink: 0;
+}
+header h1 { font-size: 1rem; font-weight: 600; flex: 1; }
+
+#btnAdd {
+  background: #2563eb;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+#btnAdd:active { opacity: 0.8; }
+#fileInput { display: none; }
+
+#list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+}
+
+.file-item {
+  background: #1f2937;
+  border: 1px solid #374151;
+  border-radius: 10px;
+  padding: 14px;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.file-item:active { background: #374151; }
+.file-name {
+  flex: 1;
+  font-size: 0.9rem;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.file-meta { font-size: 0.72rem; color: #9ca3af; margin-top: 3px; }
+
+.btn-del {
+  background: none;
+  border: none;
+  color: #6b7280;
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: 6px 8px;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+.btn-del:active { color: #ef4444; }
+
+.empty {
+  text-align: center;
+  padding: 60px 20px;
+  color: #6b7280;
+}
+.empty .icon { font-size: 3rem; margin-bottom: 12px; }
+.empty p { font-size: 0.9rem; line-height: 1.6; }
+
+/* VIEWER */
+#viewer {
+  display: none;
+  flex-direction: column;
+  position: fixed;
+  inset: 0;
+  background: #000;
+  z-index: 100;
+}
+#viewer.show { display: flex; }
+
+#viewerHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: #1f2937;
+  border-bottom: 1px solid #374151;
+  flex-shrink: 0;
+}
+#btnBack {
+  background: #374151;
+  color: #f3f4f6;
+  border: none;
+  border-radius: 8px;
+  padding: 7px 12px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+#btnBack:active { opacity: 0.8; }
+#viewerTitle {
+  flex: 1;
+  font-size: 0.85rem;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #d1d5db;
+}
+#frame {
+  flex: 1;
+  border: none;
+  width: 100%;
+  background: #fff;
+}
+
+/* LOADING OVERLAY */
+#loading {
+  position: fixed;
+  inset: 0;
+  background: #111827;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  flex-direction: column;
+  gap: 12px;
+  color: #9ca3af;
+  font-size: 0.9rem;
+}
+#loading.hide { display: none; }
+.spinner {
+  width: 32px; height: 32px;
+  border: 3px solid #374151;
+  border-top-color: #2563eb;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* TOAST */
+.toast {
+  position: fixed;
+  bottom: 24px; left: 50%;
+  transform: translateX(-50%) translateY(10px);
+  background: #374151;
+  color: #f3f4f6;
+  padding: 9px 18px;
+  border-radius: 20px;
+  font-size: 0.82rem;
+  opacity: 0;
+  transition: all 0.25s;
+  z-index: 300;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<!-- Loading screen -->
+<div id="loading">
+  <div class="spinner"></div>
+  <span>Đang tải...</span>
+</div>
+
+<header>
+  <h1>📂 HTML Viewer</h1>
+  <button id="btnAdd" onclick="document.getElementById('fileInput').click()">＋ Thêm file</button>
+  <input type="file" id="fileInput" accept=".html,.htm" multiple onchange="addFiles(event)">
+</header>
+
+<div id="list"></div>
+
+<!-- Viewer -->
+<div id="viewer">
+  <div id="viewerHeader">
+    <button id="btnBack" onclick="closeViewer()">‹ Quay lại</button>
+    <span id="viewerTitle"></span>
+  </div>
+  <iframe id="frame" sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups"></iframe>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ─── IndexedDB setup ───────────────────────────────────────────────────────
+const DB_NAME = 'HtmlViewerDB';
+const DB_VERSION = 1;
+const STORE = 'files';
+let db;
+
+function openDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = e => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains(STORE)) {
+        const store = db.createObjectStore(STORE, { keyPath: 'id' });
+        store.createIndex('addedAt', 'addedAt');
+      }
+    };
+    req.onsuccess = e => resolve(e.target.result);
+    req.onerror = e => reject(e.target.error);
+  });
+}
+
+function dbGetAll() {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, 'readonly');
+    const req = tx.objectStore(STORE).index('addedAt').getAll();
+    req.onsuccess = e => resolve(e.target.result.reverse()); // newest first
+    req.onerror = e => reject(e.target.error);
+  });
+}
+
+function dbPut(record) {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, 'readwrite');
+    const req = tx.objectStore(STORE).put(record);
+    req.onsuccess = () => resolve();
+    req.onerror = e => reject(e.target.error);
+  });
+}
+
+function dbDelete(id) {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, 'readwrite');
+    const req = tx.objectStore(STORE).delete(id);
+    req.onsuccess = () => resolve();
+    req.onerror = e => reject(e.target.error);
+  });
+}
+
+function dbGet(id) {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, 'readonly');
+    const req = tx.objectStore(STORE).get(id);
+    req.onsuccess = e => resolve(e.target.result);
+    req.onerror = e => reject(e.target.error);
+  });
+}
+
+// ─── UI ────────────────────────────────────────────────────────────────────
+async function render() {
+  const files = await dbGetAll();
+  const list = document.getElementById('list');
+  if (!files.length) {
+    list.innerHTML = `
+      <div class="empty">
+        <div class="icon">📄</div>
+        <p>Chưa có file nào.<br>Nhấn <strong>+ Thêm file</strong> để upload HTML.<br><br>
+        <span style="font-size:0.78rem;color:#4b5563">File được lưu vĩnh viễn trong thiết bị.</span></p>
+      </div>`;
+    return;
+  }
+  list.innerHTML = files.map(f => `
+    <div class="file-item" onclick="openFile('${f.id}')">
+      <span style="font-size:1.4rem;flex-shrink:0">📄</span>
+      <div style="flex:1;min-width:0">
+        <div class="file-name">${esc(f.name)}</div>
+        <div class="file-meta">${formatDate(f.addedAt)} · ${formatSize(f.size)}</div>
+      </div>
+      <button class="btn-del" onclick="deleteFile(event,'${f.id}')">🗑</button>
+    </div>
+  `).join('');
+}
+
+async function addFiles(e) {
+  const selected = Array.from(e.target.files);
+  e.target.value = '';
+  if (!selected.length) return;
+
+  let done = 0;
+  for (const file of selected) {
+    const content = await readFile(file);
+    const id = 'f' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+    await dbPut({
+      id,
+      name: file.name,
+      content,                        // lưu toàn bộ nội dung HTML
+      size: file.size,
+      addedAt: new Date().toISOString()
+    });
+    done++;
+  }
+
+  await render();
+  toast(`✅ Đã lưu ${done} file`);
+}
+
+async function openFile(id) {
+  const f = await dbGet(id);
+  if (!f) { toast('⚠️ Không tìm thấy file'); return; }
+
+  // Tạo blob từ nội dung đã lưu → luôn hoạt động dù khởi động lại Safari
+  const blob = new Blob([f.content], { type: 'text/html;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+
+  document.getElementById('viewerTitle').textContent = f.name;
+  document.getElementById('frame').src = url;
+  document.getElementById('viewer').classList.add('show');
+
+  // Giải phóng URL sau khi iframe load xong
+  document.getElementById('frame').onload = () => URL.revokeObjectURL(url);
+}
+
+function closeViewer() {
+  document.getElementById('viewer').classList.remove('show');
+  document.getElementById('frame').src = 'about:blank';
+}
+
+async function deleteFile(e, id) {
+  e.stopPropagation();
+  if (!confirm('Xóa file này?')) return;
+  await dbDelete(id);
+  await render();
+  toast('🗑 Đã xóa');
+}
+
+// ─── Helpers ───────────────────────────────────────────────────────────────
+function readFile(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => resolve(e.target.result);
+    reader.onerror = reject;
+    reader.readAsText(file, 'UTF-8');
+  });
+}
+
+function formatDate(iso) {
+  return new Date(iso).toLocaleString('vi-VN', {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit'
+  });
+}
+
+function formatSize(bytes) {
+  if (!bytes) return '';
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+}
+
+function esc(str) {
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+let toastTimer;
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+// ─── Init ──────────────────────────────────────────────────────────────────
+async function init() {
+  try {
+    db = await openDB();
+    await render();
+  } catch (err) {
+    document.getElementById('list').innerHTML =
+      `<div class="empty"><div class="icon">⚠️</div><p>Không mở được bộ nhớ cục bộ.<br>${err.message}</p></div>`;
+  }
+  document.getElementById('loading').classList.add('hide');
+}
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+
+init();
+</script>
+</body>
+</html>
